@@ -4,15 +4,13 @@ import uvicorn
 
 app = FastAPI(title="Movie API", description="API для информации о фильмах")
 
-# Данные об учебном заведении
 study_data = {
     "name": "Национальный исследовательский университет ИТМО",
     "location": "Санкт-Петербург, Россия",
     "specialization": "Информационные технологии и фотоника",
-    "photo_url": "https://upload.wikimedia.org/wikipedia/ru/thumb/4/4f/Itmo_logo_2021.png/300px-Itmo_logo_2021.png"
+    "photo_url": "https://avatars.mds.yandex.net/get-altay/226077/2a000001624c61a61a164a00d5e128a9dd2e/orig"
 }
 
-# Создаем экземпляры Movietop с топ-10 фильмами
 movietop_list = [
     Movietop(name="Побег из Шоушенка", id=1, cost=25000000, director="Фрэнк Дарабонт"),
     Movietop(name="Крестный отец", id=2, cost=6000000, director="Фрэнсис Форд Коппола"),
@@ -45,5 +43,5 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=8165,
-        reload=True  # Автоматическая перезагрузка при изменениях
+        reload=True  
     )
