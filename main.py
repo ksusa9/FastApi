@@ -10,7 +10,6 @@ study_data = {
     "specialization": "Информационные технологии и фотоника",
     "photo_url": "https://avatars.mds.yandex.net/get-altay/226077/2a000001624c61a61a164a00d5e128a9dd2e/orig"
 }
-
 movietop_list = [
     Movietop(name="Побег из Шоушенка", id=1, cost=25000000, director="Фрэнк Дарабонт"),
     Movietop(name="Крестный отец", id=2, cost=6000000, director="Фрэнсис Форд Коппола"),
