@@ -4,6 +4,8 @@ env/
 .venv/
 
 # Кэш Python
+_static_/
+_uploads_/
 __pycache__/
 *.py[cod]
 *$py.class
