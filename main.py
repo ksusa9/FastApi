@@ -1,9 +1,12 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
-from models import Movietop, NewMovie
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Response, Depends
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from models import Movietop, NewMovie, User, LoginRequest
 import os
 import uvicorn
+import uuid
+from datetime import datetime, timedelta
+from typing import Dict, Optional
 
 app = FastAPI(title="Movie API", description="API для информации о фильмах")
 
@@ -11,6 +14,16 @@ os.makedirs("uploads/descriptions", exist_ok=True)
 os.makedirs("uploads/covers", exist_ok=True)
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+# Хранилище сессий в памяти (в продакшене используйте Redis или БД)
+sessions: Dict[str, dict] = {}
+
+# Валидные пользователи (в продакшене храните в БД с хешированными паролями)
+valid_users = {
+    "admin": "password123",
+    "user": "user123",
+    "test": "test123"
+}
 
 movietop_list = [
     Movietop(name="Побег из Шоушенка", id=1, cost=25000000, director="Фрэнк Дарабонт"),
@@ -27,9 +40,99 @@ movietop_list = [
 
 new_movies = []
 
+# Зависимость для проверки аутентификации
+def get_current_user(request: Request):
+    session_token = request.cookies.get("session_token")
+    
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    session_data = sessions.get(session_token)
+    if not session_data:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    # Проверяем не истекла ли сессия
+    if datetime.now() > session_data["expires_at"]:
+        del sessions[session_token]
+        raise HTTPException(status_code=401, detail="Session expired")
+    
+    # Продлеваем сессию на 2 минуты
+    sessions[session_token]["expires_at"] = datetime.now() + timedelta(minutes=2)
+    sessions[session_token]["last_activity"] = datetime.now()
+    
+    return session_data
+
 @app.get("/")
 async def root():
     return {"message": "Добро пожаловать в Movie API!"}
+
+# Маршрут для входа в систему
+@app.post("/login")
+async def login(response: Response, login_data: LoginRequest):
+    # Проверяем учетные данные
+    if login_data.username not in valid_users or valid_users[login_data.username] != login_data.password:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    # Генерируем уникальный session token
+    session_token = str(uuid.uuid4())
+    
+    # Создаем данные сессии
+    now = datetime.now()
+    session_data = {
+        "username": login_data.username,
+        "created_at": now,
+        "last_activity": now,
+        "expires_at": now + timedelta(minutes=2)
+    }
+    
+    # Сохраняем сессию
+    sessions[session_token] = session_data
+    
+    # Устанавливаем безопасный HTTP-only cookie
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        httponly=True,
+        secure=False,  # В продакшене установите True для HTTPS
+        samesite="lax",
+        max_age=120  # 2 минуты в секундах
+    )
+    
+    return {"message": "Login successful", "username": login_data.username}
+
+# Защищенный маршрут для получения информации о пользователе
+@app.get("/user")
+async def get_user_profile(user_data: dict = Depends(get_current_user)):
+    # Формируем информацию о профиле
+    profile_info = {
+        "username": user_data["username"],
+        "session_info": {
+            "created_at": user_data["created_at"].isoformat(),
+            "last_activity": user_data["last_activity"].isoformat(),
+            "expires_at": user_data["expires_at"].isoformat(),
+            "session_duration_minutes": 2
+        },
+        "movies": [movie.dict() for movie in movietop_list]
+    }
+    
+    return profile_info
+
+# Маршрут для выхода из системы
+@app.post("/logout")
+async def logout(response: Response, user_data: dict = Depends(get_current_user)):
+    session_token = None
+    for token, data in sessions.items():
+        if data["username"] == user_data["username"]:
+            session_token = token
+            break
+    
+    if session_token:
+        del sessions[session_token]
+    
+    # Удаляем cookie
+    response.delete_cookie("session_token")
+    
+    return {"message": "Logout successful"}
 
 @app.get("/study", response_class=HTMLResponse)
 async def get_study_info_html():

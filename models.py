@@ -12,3 +12,11 @@ class NewMovie(BaseModel):
     description: str
     budget: int  
     is_published: bool
+
+class User(BaseModel):
+    username: str
+    password: str
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
