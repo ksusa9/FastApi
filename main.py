@@ -1,4 +1,3 @@
-# main.py (исправленная версия)
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Response, Request, Depends, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -10,29 +9,24 @@ import jwt
 from datetime import datetime, timedelta
 from models import Movietop, User, LoginRequest, Token
 
-# Конфигурация JWT
 SECRET_KEY = "your-secret-key-here-change-in-production"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# Создаем папки для загрузки файлов
 os.makedirs("uploads/images", exist_ok=True)
 os.makedirs("uploads/descriptions", exist_ok=True)
 
 app = FastAPI(title="Movie API", description="API для управления фильмами")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-# Security scheme для JWT
 security = HTTPBearer()
 
-# База данных пользователей
 users_db = {
     "admin": "password123",
     "user": "user123",
     "alice": "alice2024"
 }
 
-# База данных фильмов
 movies_db = [
     Movietop(id=1, name="Зеленая миля", cost=60000000, director="Фрэнк Дарабонт"),
     Movietop(id=2, name="Побег из Шоушенка", cost=25000000, director="Фрэнк Дарабонт"),
@@ -46,7 +40,6 @@ movies_db = [
     Movietop(id=10, name="Бойцовский клуб", cost=63000000, director="Дэвид Финчер")
 ]
 
-# Базовые CSS стили
 BASE_STYLES = """
 body { font-family: Arial, sans-serif; margin: 20px; }
 .container { max-width: 800px; margin: 0 auto; }
@@ -59,7 +52,6 @@ button { background: #4CAF50; color: white; padding: 10px; border: none; cursor:
 .movie-poster { max-width: 200px; max-height: 300px; margin: 10px 0; }
 """
 
-# Функция для создания JWT токена
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
@@ -70,7 +62,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# Функция для проверки JWT токена
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
@@ -93,7 +84,6 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
             detail="Invalid token",
         )
 
-# 1. Конечная точка для логина с JWT
 @app.post("/login", response_model=Token)
 async def login(login_data: LoginRequest):
     if login_data.username not in users_db or users_db[login_data.username] != login_data.password:
@@ -109,7 +99,6 @@ async def login(login_data: LoginRequest):
     
     return {"access_token": access_token, "token_type": "bearer"}
 
-# HTML форма для логина с JWT
 @app.get("/login-form", response_class=HTMLResponse)
 async def login_form():
     return f"""
@@ -173,7 +162,6 @@ async def login_form():
     </html>
     """
 
-# Защищенная форма для добавления фильмов
 @app.get("/add-film-protected", response_class=HTMLResponse)
 async def add_film_protected_form():
     return f"""
@@ -284,7 +272,6 @@ async def add_film_protected_form():
     </html>
     """
 
-# Защищенный endpoint для добавления фильмов
 @app.post("/add-film")
 async def add_film_protected(
     name: str = Form(...),
@@ -299,13 +286,11 @@ async def add_film_protected(
     
     poster_url = None
     if poster and poster.filename:
-        # Создаем безопасное имя файла
         file_extension = poster.filename.split('.')[-1]
         safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).rstrip()
         poster_filename = f"{new_id}_{safe_name.replace(' ', '_')}.{file_extension}"
         poster_path = f"uploads/images/{poster_filename}"
         
-        # Сохраняем файл
         with open(poster_path, "wb") as buffer:
             shutil.copyfileobj(poster.file, buffer)
         poster_url = f"/uploads/images/{poster_filename}"
@@ -327,7 +312,6 @@ async def add_film_protected(
         "added_by": username
     }
 
-# Главная страница
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
     return f"""
@@ -364,7 +348,6 @@ async def read_root():
     </html>
     """
 
-# Страница учебного заведения
 @app.get("/study", response_class=HTMLResponse)
 async def get_study_info():
     return f"""
@@ -410,7 +393,6 @@ async def get_study_info():
     </html>
     """
 
-# Поиск фильма по названию
 @app.get("/movietop/{movie_name}")
 async def get_movie(movie_name: str):
     for movie in movies_db:
@@ -418,12 +400,10 @@ async def get_movie(movie_name: str):
             return movie
     raise HTTPException(status_code=404, detail="Фильм не найден")
 
-# Страница всех фильмов с фото - ИСПРАВЛЕННАЯ ВЕРСИЯ
 @app.get("/movies", response_class=HTMLResponse)
 async def get_all_movies():
     movies_html = ""
     for movie in movies_db:
-        # Проверяем есть ли фото и правильно ли отображаем
         poster_html = ""
         if movie.poster_url:
             poster_html = f'<img src="{movie.poster_url}" class="movie-poster" alt="{movie.name}">'

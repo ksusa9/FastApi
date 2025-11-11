@@ -1,5 +1,12 @@
-venv/
-.env
 __pycache__/
-uploads/
 static/
+uploads/
+venv/
+descriptions/
+images/
+covers/
+*.pyc
+*.pyo
+*.pyd
+.env
+.DS_Store
