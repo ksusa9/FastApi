@@ -1,17 +1,16 @@
+# models.py
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 class Movietop(BaseModel):
-    name: str
     id: int
+    name: str
     cost: int
     director: str
-
-class NewMovie(BaseModel):
-    title: str
-    description: str
-    budget: int  
-    is_published: bool
+    description: Optional[str] = None
+    is_oscar_winner: Optional[bool] = False
+    poster_url: Optional[str] = None
 
 class User(BaseModel):
     username: str
@@ -20,3 +19,7 @@ class User(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
