@@ -1,3 +1,4 @@
+# main.py
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Response, Request, Depends, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -6,12 +7,14 @@ from typing import List, Optional
 import shutil
 import os
 import jwt
+import uuid
 from datetime import datetime, timedelta
-from models import Movietop, User, LoginRequest, Token
+from models import Movietop, User, LoginRequest, Token, UserProfile
 
 SECRET_KEY = "your-secret-key-here-change-in-production"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+SESSION_EXPIRE_MINUTES = 2  
 
 os.makedirs("uploads/images", exist_ok=True)
 os.makedirs("uploads/descriptions", exist_ok=True)
@@ -27,6 +30,8 @@ users_db = {
     "alice": "alice2024"
 }
 
+sessions_db = {}
+
 movies_db = [
     Movietop(id=1, name="Зеленая миля", cost=60000000, director="Фрэнк Дарабонт"),
     Movietop(id=2, name="Побег из Шоушенка", cost=25000000, director="Фрэнк Дарабонт"),
@@ -35,7 +40,7 @@ movies_db = [
     Movietop(id=5, name="Крестный отец", cost=6000000, director="Фрэнсис Форд Коппола"),
     Movietop(id=6, name="Начало", cost=160000000, director="Кристофер Нолан"),
     Movietop(id=7, name="Леон", cost=16000000, director="Люк Бессон"),
-    Movietop(id=8, name="Король Лев", cost=45000000, director="Роджер Аллерс"),
+    Movietop(id=8, name="Король Лев", cost=45000000, director="Роджер Аллерس"),
     Movietop(id=9, name="Темный рыцарь", cost=185000000, director="Кристофер Нолан"),
     Movietop(id=10, name="Бойцовский клуб", cost=63000000, director="Дэвид Финчер")
 ]
@@ -50,7 +55,134 @@ input, textarea { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-b
 button { background: #4CAF50; color: white; padding: 10px; border: none; cursor: pointer; }
 .card { border: 1px solid #ddd; padding: 15px; margin: 10px 0; }
 .movie-poster { max-width: 200px; max-height: 300px; margin: 10px 0; }
+.university-photo { max-width: 100%; height: auto; border-radius: 10px; margin: 20px 0; }
 """
+
+def validate_cookie_session(session_token: str) -> Optional[dict]:
+    """Проверка и обновление cookie сессии"""
+    if session_token not in sessions_db:
+        return None
+    
+    session_data = sessions_db[session_token]
+    
+    if datetime.now() > session_data["expires_at"]:
+        del sessions_db[session_token]
+        return None
+    
+    session_data["expires_at"] = datetime.now() + timedelta(minutes=SESSION_EXPIRE_MINUTES)
+    session_data["last_activity"] = datetime.now()
+    sessions_db[session_token] = session_data
+    
+    return session_data
+
+@app.get("/cookie-login", response_class=HTMLResponse)
+async def cookie_login_form():
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Вход (Cookie-based)</title>
+        <style>{BASE_STYLES}</style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🔐 Вход (Cookie Session)</h1>
+            
+            <div class="nav">
+                <a href="/">Главная</a>
+                <a href="/user">Профиль</a>
+                <a href="/cookie-login">Cookie Вход</a>
+                <a href="/login-form">JWT Вход</a>
+            </div>
+
+            <div class="card">
+                <form action="/cookie-login" method="post">
+                    <div class="form-group">
+                        <label>Имя пользователя:</label>
+                        <input type="text" name="username" value="admin" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Пароль:</label>
+                        <input type="password" name="password" value="password123" required>
+                    </div>
+                    <button type="submit" style="width: 100%">Войти (Cookie)</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h3>Тестовые пользователи:</h3>
+                <p>admin / password123</p>
+                <p>user / user123</p>
+                <p>alice / alice2024</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+@app.post("/cookie-login")
+async def cookie_login(response: Response, username: str = Form(...), password: str = Form(...)):
+    if username not in users_db or users_db[username] != password:
+        raise HTTPException(status_code=401, detail="Неверное имя пользователя или пароль")
+    
+    session_token = str(uuid.uuid4())
+    expires_at = datetime.now() + timedelta(minutes=SESSION_EXPIRE_MINUTES)
+    
+    sessions_db[session_token] = {
+        "username": username,
+        "login_time": datetime.now(),
+        "expires_at": expires_at,
+        "last_activity": datetime.now()
+    }
+    
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        httponly=True,
+        secure=False,
+        max_age=SESSION_EXPIRE_MINUTES * 60,
+        samesite="lax"
+    )
+    
+    return {"message": "Успешный вход", "username": username}
+
+@app.get("/user")
+async def get_user_profile(request: Request, session_token: Optional[str] = None):
+    if not session_token:
+        session_token = request.cookies.get("session_token")
+    
+    if not session_token:
+        return JSONResponse(
+            status_code=401,
+            content={"message": "Unauthorized"}
+        )
+    
+    session_data = validate_cookie_session(session_token)
+    if not session_data:
+        return JSONResponse(
+            status_code=401,
+            content={"message": "Unauthorized"}
+        )
+    
+    user_profile = UserProfile(
+        username=session_data["username"],
+        login_time=session_data["login_time"].isoformat(),
+        last_activity=session_data["last_activity"].isoformat(),
+        session_expires=session_data["expires_at"].isoformat(),
+        movies_count=len(movies_db),
+        movies=movies_db
+    )
+    
+    return user_profile
+
+@app.post("/cookie-logout")
+async def cookie_logout(response: Response, session_token: Optional[str] = None):
+    if session_token:
+        if session_token in sessions_db:
+            del sessions_db[session_token]
+    
+    response.delete_cookie(key="session_token")
+    return {"message": "Успешный выход из системы"}
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -85,7 +217,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         )
 
 @app.post("/login", response_model=Token)
-async def login(login_data: LoginRequest):
+async def login_jwt(login_data: LoginRequest):
     if login_data.username not in users_db or users_db[login_data.username] != login_data.password:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -100,12 +232,12 @@ async def login(login_data: LoginRequest):
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/login-form", response_class=HTMLResponse)
-async def login_form():
+async def login_jwt_form():
     return f"""
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Вход в систему (JWT)</title>
+        <title>Вход (JWT)</title>
         <style>{BASE_STYLES}</style>
         <script>
             async function login() {{
@@ -121,7 +253,7 @@ async def login_form():
                 if (response.ok) {{
                     const data = await response.json();
                     localStorage.setItem('jwt_token', data.access_token);
-                    alert('Токен получен и сохранен!');
+                    alert('JWT токен получен и сохранен!');
                     window.location.href = '/add-film-protected';
                 }} else {{
                     alert('Ошибка авторизации!');
@@ -131,12 +263,13 @@ async def login_form():
     </head>
     <body>
         <div class="container">
-            <h1>🔐 Вход в систему (JWT)</h1>
+            <h1>🔐 Вход (JWT)</h1>
             
             <div class="nav">
                 <a href="/">Главная</a>
-                <a href="/movies">Фильмы</a>
-                <a href="/add-film-protected">Добавить фильм</a>
+                <a href="/user">Профиль</a>
+                <a href="/cookie-login">Cookie Вход</a>
+                <a href="/login-form">JWT Вход</a>
             </div>
 
             <div class="card">
@@ -148,7 +281,7 @@ async def login_form():
                     <label>Пароль:</label>
                     <input type="password" id="password" value="password123">
                 </div>
-                <button onclick="login()" style="width: 100%">Войти</button>
+                <button onclick="login()" style="width: 100%">Войти (JWT)</button>
             </div>
 
             <div class="card">
@@ -227,7 +360,8 @@ async def add_film_protected_form():
             <div class="nav">
                 <a href="/">Главная</a>
                 <a href="/movies">Фильмы</a>
-                <a href="/login-form">Вход</a>
+                <a href="/login-form">Вход JWT</a>
+                <a href="/cookie-login">Вход Cookie</a>
             </div>
 
             <div class="card">
@@ -328,6 +462,8 @@ async def read_root():
             <div class="nav">
                 <a href="/">Главная</a>
                 <a href="/movies">Все фильмы</a>
+                <a href="/user">Профиль (Cookie)</a>
+                <a href="/cookie-login">Вход Cookie</a>
                 <a href="/login-form">Вход JWT</a>
                 <a href="/add-film-protected">Добавить фильм</a>
                 <a href="/study">Учебное заведение</a>
@@ -335,13 +471,6 @@ async def read_root():
             
             <div class="card">
                 <h2>Добро пожаловать!</h2>
-                <p>Система управления фильмами с JWT аутентификацией.</p>
-                <p><strong>Функции:</strong></p>
-                <ul>
-                    <li>Просмотр коллекции фильмов</li>
-                    <li>JWT аутентификация</li>
-                    <li>Защищенное добавление фильмов</li>
-                </ul>
             </div>
         </div>
     </body>
@@ -354,39 +483,28 @@ async def get_study_info():
     <!DOCTYPE html>
     <html>
     <head>
-        <style>{BASE_STYLES}
-            .university-photo {{
-                max-width: 100%;
-                height: auto;
-                border-radius: 10px;
-                margin: 20px 0;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            }}
-            .photo-caption {{
-                text-align: center;
-                color: #666;
-                font-style: italic;
-                margin-top: -10px;
-                margin-bottom: 20px;
-            }}</style>
+        <style>{BASE_STYLES}</style>
     </head>
     <body>
         <div class="container">
-            <h1>🎓 Учебное заведение</h1>
+            <h1>Учебное заведение</h1>
             
             <div class="nav">
                 <a href="/">Главная</a>
                 <a href="/movies">Фильмы</a>
-                <a href="/login-form">Вход</a>
+                <a href="/user">Профиль</a>
             </div>
 
             <div class="card">
                 <h2>Брянский Государственный Инженерно-Технологический Университет</h2>
-                <p><strong>Институт:</strong> Инженерно-экономический </p>
+                
+                <img src="https://avatars.mds.yandex.net/get-altay/226077/2a000001624c61a61a164a00d5e128a9dd2e/orig" 
+                    alt="Главное здание Университета ИТМО" 
+                    class="university-photo">
+                
+                <p><strong>Институт:</strong> Инженерно-Экономический </p>
                 <p><strong>Курс:</strong> 2 курс</p>
-                <p><strong>Специализация:</strong> Програмная инженерия</p>
-                <img src="https://avatars.mds.yandex.net/get-altay/226077/2a000001624c61a61a164a00d5e128a9dd2e/orig" alt="Главное здание Университета БГИТУ" 
-                class="university-photo">
+                <p><strong>Специализация:</strong> Программная инженерия</p>
             </div>
         </div>
     </body>
@@ -404,12 +522,7 @@ async def get_movie(movie_name: str):
 async def get_all_movies():
     movies_html = ""
     for movie in movies_db:
-        poster_html = ""
-        if movie.poster_url:
-            poster_html = f'<img src="{movie.poster_url}" class="movie-poster" alt="{movie.name}">'
-        else:
-            poster_html = '<p>📷 Нет обложки</p>'
-        
+        poster_html = f'<img src="{movie.poster_url}" class="movie-poster" alt="{movie.name}">' if movie.poster_url else '<p>📷 Нет обложки</p>'
         oscar_icon = "🏆" if movie.is_oscar_winner else ""
         
         movies_html += f"""
@@ -419,8 +532,6 @@ async def get_all_movies():
             <p><strong>Режиссер:</strong> {movie.director}</p>
             <p><strong>Бюджет:</strong> ${movie.cost:,}</p>
             <p><strong>Описание:</strong> {movie.description or 'Нет описания'}</p>
-            <p><strong>ID:</strong> {movie.id}</p>
-            <p><strong>URL фото:</strong> {movie.poster_url or 'Нет фото'}</p>
         </div>
         """
     
@@ -437,7 +548,6 @@ async def get_all_movies():
             <div class="nav">
                 <a href="/">Главная</a>
                 <a href="/add-film-protected">Добавить фильм</a>
-                <a href="/login-form">Вход</a>
             </div>
             {movies_html}
         </div>

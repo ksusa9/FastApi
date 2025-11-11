@@ -23,3 +23,11 @@ class LoginRequest(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+class UserProfile(BaseModel):
+    username: str
+    login_time: str
+    last_activity: str
+    session_expires: str
+    movies_count: int
+    movies: list[Movietop]
