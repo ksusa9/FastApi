@@ -1,0 +1,160 @@
+#include <iostream>
+#include <cstring>
+#include <locale> 
+
+using namespace std;
+
+class String {
+private:
+    char* _str;
+    int _size;
+public:
+    String();
+    String(const char* s);
+    String(const String& other);
+    ~String();
+
+    const char* getValue() const;
+    void setValue(const char* value);
+
+    int getSize() const;
+    void addChar(char c);
+    void clear();
+
+    String& operator+=(const String& other);
+    String operator+(const String& other) const;
+    String operator*(int n) const;
+};
+
+String::String() : _str(nullptr), _size(0) {
+    _str = new char[1];
+    _str[0] = '\0';
+}
+
+String::String(const char* s) : _str(nullptr), _size(0) {
+    if (s == nullptr) {
+        _str = new char[1];
+        _str[0] = '\0';
+        _size = 0;
+    }
+    else {
+        _size = strlen(s);
+        _str = new char[_size + 1];
+        strcpy_s(_str, _size + 1, s);
+    }
+}
+
+String::String(const String& other) : _str(nullptr), _size(other._size) {
+    _str = new char[_size + 1];
+    strcpy_s(_str, _size + 1, other._str);
+}
+
+String::~String() {
+    delete[] _str;
+}
+
+const char* String::getValue() const {
+    return _str;
+}
+
+void String::setValue(const char* value) {
+    if (value == nullptr) {
+        clear();
+        return;
+    }
+    delete[] _str;
+    _size = strlen(value);
+    _str = new char[_size + 1];
+    strcpy_s(_str, _size + 1, value);
+}
+
+int String::getSize() const {
+    return _size;
+}
+
+void String::addChar(char c) {
+    char* newStr = new char[_size + 2];
+    if (_size > 0) {
+        strcpy_s(newStr, _size + 1, _str);
+    }
+    newStr[_size] = c;
+    newStr[_size + 1] = '\0';
+
+    delete[] _str;
+    _str = newStr;
+    _size++;
+}
+
+void String::clear() {
+    delete[] _str;
+    _str = new char[1];
+    _str[0] = '\0';
+    _size = 0;
+}
+
+String& String::operator+=(const String& other) {
+    int newSize = _size + other._size;
+    char* newStr = new char[newSize + 1];
+    if (_size > 0) {
+        strcpy_s(newStr, _size + 1, _str);
+    }
+    else {
+        newStr[0] = '\0';
+    }
+    strcat_s(newStr, newSize + 1, other._str);
+    delete[] _str;
+    _str = newStr;
+    _size = newSize;
+    return *this;
+}
+
+String String::operator+(const String& other) const {
+    String result = *this;
+    result += other;
+    return result;
+}
+
+String String::operator*(int n) const {
+    if (n <= 0) return String("");
+
+    // Вариант с разделением копий пробелом и запятой, как в примере
+    int totalLength = 0;
+    // Каждая копия + разделитель (запятая + пробел), последний разделитель не нужен
+    // но в примере последний разделитель есть, так что добавим его в конце.
+    totalLength = (_size + 2) * n; // запас
+
+    char* newStr = new char[totalLength + 1];
+    newStr[0] = '\0';
+
+    for (int i = 0; i < n; ++i) {
+        strcat_s(newStr, totalLength + 1, _str);
+        if (i != n - 1) {
+            strcat_s(newStr, totalLength + 1, ", ");
+        }
+    }
+    // В конце добавим пробел, чтобы было как в примере ("Привет, Привет, ")
+    strcat_s(newStr, totalLength + 1, " ");
+
+    String result(newStr);
+    delete[] newStr;
+    return result;
+}
+
+int main() {
+    // Настройка русской локали
+    setlocale(LC_ALL, "Russian");
+
+    String str1("Привет, ");
+    String str2("мир!");
+
+    cout << endl;
+    cout << "str1: \"" << str1.getValue() << "\"" << endl;
+    cout << "str2: \"" << str2.getValue() << "\"" << endl;
+    cout << endl;
+
+    cout << "Перегрузка оператора + (str1 + str2): \"" << (str1 + str2).getValue() << "\"" << endl;
+    cout << "Перегрузка оператора * (str1 * 2): \"" << (str1 * 2).getValue() << "\"" << endl;
+
+    system("pause");
+    return 0;
+}
